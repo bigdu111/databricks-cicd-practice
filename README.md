@@ -245,6 +245,15 @@ Run by **GitHub**, on its own virtual machine, on each pull request and **before
 
 The unit tests also run first in **Deploy to dev**, so a broken change isn't deployed even to dev.
 
+**`tests/` is never deployed to Databricks.** Unlike `src/`, nothing in `databricks.yml` or `resources/` points to it, so it runs only on GitHub's virtual machine, as a check *before* deploying. The code in `src/` is what gets deployed and run in dev, test, and prod; `tests/` only imports `src/transforms.py` to check it.
+
+| Folder | Is | Runs on | Deployed to Databricks? |
+|---|---|---|---|
+| `tests/` | Unit tests: the CI checks | GitHub's virtual machine | **No** |
+| `src/` | The pipeline itself | Databricks: dev, test, and prod | **Yes** |
+
+> Don't confuse the **`tests/` folder** with the **`test` environment**. `tests/` holds unit tests that run in CI, before merging; `test` is the `sales_test` schema and jobs in Databricks, deployed after merging.
+
 ### 4. The CD workflows, and the code they deploy
 
 The CD workflows are read by **GitHub**, and they move the code in `src/` into the environments.
