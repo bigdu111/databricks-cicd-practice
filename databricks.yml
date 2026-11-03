@@ -5,8 +5,8 @@
 #   dev   -> sales_dev_<branch>  (one copy per feature branch, deployed on every push)
 #   test  -> sales_test          (mirrors main)
 #   prod  -> sales_prod          (approved releases)
-# Replace <your-workspace-url> in all three places (for example
-# https://dbc-1234abcd-5678.cloud.databricks.com), and <your-databricks-email> in the
+# Replace https://dbc-ab32169b-4c1c.cloud.databricks.com/ in all three places (for example
+# https://dbc-1234abcd-5678.cloud.databricks.com), and bighongbindu@gmail.com in the
 # prod target.
 
 bundle:
@@ -33,7 +33,7 @@ targets:
     mode: development
     default: true
     workspace:
-      host: <your-workspace-url>
+      host: https://dbc-ab32169b-4c1c.cloud.databricks.com/
       root_path: ~/.bundle/${bundle.name}/dev/${var.branch}
     presets:
       name_prefix: "[dev ${workspace.current_user.short_name} ${var.branch}] "
@@ -43,7 +43,7 @@ targets:
   # Deployed automatically by GitHub Actions on every merge into main.
   test:
     workspace:
-      host: <your-workspace-url>
+      host: https://dbc-ab32169b-4c1c.cloud.databricks.com/
       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
     variables:
       schema: sales_test
@@ -52,14 +52,14 @@ targets:
   prod:
     mode: production
     workspace:
-      host: <your-workspace-url>
+      host: https://dbc-ab32169b-4c1c.cloud.databricks.com/
       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
     variables:
       schema: sales_prod
     # Production mode requires run_as and permissions. On Free Edition there are no
     # service principals, so prod runs as you. Replace with your Databricks login email.
     run_as:
-      user_name: <your-databricks-email>
+      user_name: bighongbindu@gmail.com
     permissions:
-      - user_name: <your-databricks-email>
+      - user_name: bighongbindu@gmail.com
         level: CAN_MANAGE
