@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    # The real pipeline: ingest raw orders, then build the report.
+    sales_pipeline:
+      name: sales_pipeline_${bundle.target}
+      tasks:
+        - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/ingest.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+        - task_key: build_report
+          depends_on:
+            - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/build_report.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+
+    # Checks the pipeline's output. Run by the CD workflows after every deploy to dev and test
+    # (not by CI: it needs the tables the pipeline creates in Databricks).
+    integration_tests:
+      name: integration_tests_${bundle.target}
+      tasks:
+        - task_key: run_checks
+          notebook_task:
+            notebook_path: ../src/integration_checks.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}

@@ -1,0 +1,34 @@
+# When a feature branch is deleted (for example, after its pull request is merged),
+# remove that branch's dev jobs and files from Databricks.
+name: Clean up dev
+
+on:
+  delete:
+
+jobs:
+  destroy:
+    if: github.event.ref_type == 'branch' && startsWith(github.event.ref, 'feature/')
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4   # the default branch; the deleted branch is gone
+
+      - name: Work out the deleted branch's dev name
+        env:
+          DELETED_REF: ${{ github.event.ref }}
+        run: |
+          name="${DELETED_REF#feature/}"
+          name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '_')"
+          echo "DEV_NAME=$name" >> "$GITHUB_ENV"
+          echo "Dev name: $name"
+
+      - uses: databricks/setup-cli@main
+
+      - name: Destroy the branch's dev deployment
+        run: databricks bundle destroy -t dev --var="branch=$DEV_NAME" --auto-approve
+
+      # The schema sales_dev_<name> and its tables are kept. Drop them in the SQL editor
+      # if you don't need them: DROP SCHEMA workspace.sales_dev_<name> CASCADE

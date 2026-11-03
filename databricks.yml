@@ -1,0 +1,65 @@
+# Bundle definition: one project, three environments (targets).
+#
+# Free Edition setup: all three targets use the SAME workspace and keep their data
+# apart with separate schemas:
+#   dev   -> sales_dev_<branch>  (one copy per feature branch, deployed on every push)
+#   test  -> sales_test          (mirrors main)
+#   prod  -> sales_prod          (approved releases)
+# Replace <your-workspace-url> in all three places (for example
+# https://dbc-1234abcd-5678.cloud.databricks.com), and <your-databricks-email> in the
+# prod target.
+
+bundle:
+  name: sales_analytics
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to use
+    default: workspace
+  schema:
+    description: Schema this environment reads and writes
+  branch:
+    description: Short feature-branch name, set by the Deploy to dev workflow
+    default: local
+
+targets:
+  # One copy per feature branch, deployed by GitHub Actions on every push to feature/*.
+  # Jobs are named "[dev <user> <branch>] ..." and write to sales_dev_<branch>, so
+  # features never overwrite each other.
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: <your-workspace-url>
+      root_path: ~/.bundle/${bundle.name}/dev/${var.branch}
+    presets:
+      name_prefix: "[dev ${workspace.current_user.short_name} ${var.branch}] "
+    variables:
+      schema: sales_dev_${var.branch}
+
+  # Deployed automatically by GitHub Actions on every merge into main.
+  test:
+    workspace:
+      host: <your-workspace-url>
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      schema: sales_test
+
+  # Deployed by GitHub Actions only when a release is published (and approved).
+  prod:
+    mode: production
+    workspace:
+      host: <your-workspace-url>
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      schema: sales_prod
+    # Production mode requires run_as and permissions. On Free Edition there are no
+    # service principals, so prod runs as you. Replace with your Databricks login email.
+    run_as:
+      user_name: <your-databricks-email>
+    permissions:
+      - user_name: <your-databricks-email>
+        level: CAN_MANAGE

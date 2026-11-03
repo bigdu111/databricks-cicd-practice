@@ -1,0 +1,28 @@
+# Every merge into main is deployed to the test environment, so test always mirrors main.
+name: Deploy to test
+
+on:
+  push:
+    branches: [main]
+
+concurrency: deploy-test   # one test deploy at a time
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+
+      - name: Deploy main to test
+        run: databricks bundle deploy -t test
+
+      - name: Run the pipeline
+        run: databricks bundle run -t test sales_pipeline
+
+      - name: Run integration tests
+        run: databricks bundle run -t test integration_tests

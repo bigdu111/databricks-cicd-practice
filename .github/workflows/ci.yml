@@ -1,0 +1,30 @@
+# Runs on every pull request into main. Branch protection requires it to pass before merging.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Unit tests
+        run: |
+          pip install pytest
+          pytest tests/
+
+      - uses: databricks/setup-cli@main
+
+      - name: Validate bundle against the test target
+        run: databricks bundle validate -t test

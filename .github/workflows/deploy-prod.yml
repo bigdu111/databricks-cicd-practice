@@ -1,0 +1,29 @@
+# Production deploys happen only when a release is published. If the "prod" GitHub
+# environment has required reviewers, the job waits for approval before it starts.
+name: Deploy to prod
+
+on:
+  release:
+    types: [published]
+
+concurrency: deploy-prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4   # checks out the release tag
+      - uses: databricks/setup-cli@main
+
+      - name: Validate
+        run: databricks bundle validate -t prod
+
+      - name: Deploy release to prod
+        run: databricks bundle deploy -t prod
+
+      - name: Run the pipeline
+        run: databricks bundle run -t prod sales_pipeline

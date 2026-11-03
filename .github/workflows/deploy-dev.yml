@@ -1,0 +1,47 @@
+# Every push to a feature/* branch (for example, Commit & Push from a Databricks Git
+# folder) deploys that branch to its own dev copy, runs the pipeline and the checks.
+name: Deploy to dev
+
+on:
+  push:
+    branches: ["feature/**"]
+
+concurrency: deploy-dev-${{ github.ref_name }}   # one deploy per branch at a time
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out this branch's dev name
+        # feature/avg-order -> avg_order (used in job names and the schema sales_dev_avg_order)
+        run: |
+          name="${GITHUB_REF_NAME#feature/}"
+          name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '_')"
+          echo "DEV_NAME=$name" >> "$GITHUB_ENV"
+          echo "Dev name: $name"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Unit tests
+        run: |
+          pip install pytest
+          pytest tests/
+
+      - uses: databricks/setup-cli@main
+
+      - name: Deploy branch to dev
+        run: databricks bundle deploy -t dev --var="branch=$DEV_NAME"
+
+      - name: Run the pipeline
+        run: databricks bundle run -t dev --var="branch=$DEV_NAME" sales_pipeline
+
+      - name: Run integration tests
+        run: databricks bundle run -t dev --var="branch=$DEV_NAME" integration_tests
