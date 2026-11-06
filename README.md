@@ -189,21 +189,22 @@ The project files do two jobs at once. Pushed to GitHub, they **set up the pipel
 ```
 databricks-cicd-practice/
 │
-├── databricks.yml          1. ENVIRONMENTS
-├── resources/
-│   └── sales_job.yml
-│
 │   2. GITHUB SETTINGS: made by hand
 │      in GitHub, not in this folder
 │
-├── tests/                  3. CI CHECKS
-│   └── test_transforms.py
 ├── .github/workflows/
 │   ├── ci.yml              3. CI CHECKS
 │   ├── deploy-dev.yml      4. CD
 │   ├── deploy-test.yml     4. CD
 │   ├── deploy-prod.yml     4. CD
 │   └── cleanup-dev.yml     4. CD
+│
+├── tests/                  3. CI CHECKS
+│   └── test_transforms.py
+│
+├── databricks.yml          1. ENVIRONMENTS
+├── resources/
+│   └── sales_job.yml
 │
 └── src/                    4. CD: code that's
     ├── ingest.py              deployed and run
@@ -241,9 +242,11 @@ Run by **GitHub**, on its own virtual machine, on each pull request and **before
 | File | Does |
 |---|---|
 | `tests/test_transforms.py` | The **unit tests**: check the functions in `src/transforms.py` give the expected results, without Databricks |
-| `.github/workflows/ci.yml` | The **CI** workflow: on each pull request into `main`, runs the unit tests and validates the bundle. Its result is what **gate 1** checks |
+| `.github/workflows/ci.yml` | The **CI** workflow: on each pull request into `main`, checks every file in `src/` for Python syntax errors (`python -m py_compile`), runs the unit tests, and validates the bundle. Its result is what **gate 1** checks |
 
-The unit tests also run first in **Deploy to dev**, so a broken change isn't deployed even to dev.
+The syntax check and unit tests also run first in **Deploy to dev**, so a broken change isn't deployed even to dev.
+
+> **Why a separate syntax check?** The unit tests only import `transforms.py`; they never run the notebooks. Without the syntax check, a typo in `build_report.py` would pass CI and only fail once the notebook ran in Databricks. `py_compile` reads each file without running it, so it catches syntax errors (a missing bracket, a bad indent) in about a second. It can't catch mistakes that only show up when the code runs, such as a misspelled column name: those are what dev's pipeline run and the integration checks are for.
 
 **`tests/` is never deployed to Databricks.** Unlike `src/`, nothing in `databricks.yml` or `resources/` points to it, so it runs only on GitHub's virtual machine, as a check *before* deploying. The code in `src/` is what gets deployed and run in dev, test, and prod; `tests/` only imports `src/transforms.py` to check it.
 
@@ -260,7 +263,7 @@ The CD workflows are read by **GitHub**, and they move the code in `src/` into t
 
 | Workflow file | Runs when | Does |
 |---|---|---|
-| `deploy-dev.yml` | Push to a `feature/*` branch | Unit tests, then deploy that branch to dev and run the pipeline and checks |
+| `deploy-dev.yml` | Push to a `feature/*` branch, including creating one | Syntax check and unit tests, then deploy that branch to dev and run the pipeline and checks |
 | `deploy-test.yml` | Merge into `main` | Deploy to test, run the pipeline and checks |
 | `deploy-prod.yml` | Release published and approved (gate 2) | Deploy to prod, run the pipeline |
 | `cleanup-dev.yml` | `feature/*` branch deleted | Remove that branch's dev copy |
@@ -298,7 +301,7 @@ So the setup follows what each step depends on:
 | 2 | The repository, with the environment definitions | Everything else is built from it | |
 | 3 | GitHub → Databricks connection | So the pipeline can deploy | test: its first deploy |
 | 4 | Databricks → GitHub connection | So people can develop in Databricks and push | |
-| 5–8 | Git folders and features | The team's everyday work | dev: each branch's first push |
+| 5–8 | Git folders and features | The team's everyday work | dev: each branch, as soon as it's created |
 | 9 | A release | Passing gate 2 | prod: the first approved release |
 | Practice, Rolling back | A broken change, and a way back | Seeing the gates work, and recovering when one isn't enough | |
 
@@ -360,12 +363,15 @@ For each: under **Environment variables** click **Add variable**, and under **En
 
 **3. Let the pipeline create test.** Go to **Actions** → **Deploy to test** → the failed run → **Re-run jobs** → **Re-run all jobs**. When it's green, the test environment exists: the job `sales_pipeline_test`, its deployed copy, and the schema `workspace.sales_test` with the tables `orders` and `sales_report`. You never created any of it by hand.
 
-**4. Add gate 1.** In the repository → **Settings** → **Rules** → **Rulesets** → **New ruleset** → **New branch ruleset**:
+> **Re-run or push again?** A re-run uses the code from the run's **original commit**. It only helps when something *outside* the code was wrong, as here: the code was fine, but the GitHub environments didn't exist yet. If the run failed because of the code itself, for example `<your-workspace-url>` was still in `databricks.yml`, re-running fails the same way every time. Fix the file and push again; the new commit starts a new run, and when that one is green, test exists. The old red run can stay in the history, or you can delete it (open it → **⋯** → **Delete workflow run**).
+
+**4. Add gate 1.** In the repository → **Settings** → **Rules** → **Rulesets** → **New ruleset** → **New branch ruleset**. (Not **Settings** → **Branches** → **Add branch protection rule**: that's the older, classic kind, with similar options under different names.)
 
 - Name: `protect-main`; Enforcement status: **Active**
 - Target branches: **Add target** → **Include default branch**
+- Scroll down to the **Rules** section, a long list of checkboxes, and find the next two there.
 - Check **Require a pull request before merging**. Set required approvals to **0**, since you're working alone. In a team, use at least 1.
-- Check **Require status checks to pass**. The check to require, `checks`, appears only after CI has run once, so you'll add it in Part 6, step 6.
+- Check **Require status checks to pass**. The check to require, `checks`, appears only after CI has run once, so you'll add it in Part 6, step 6. Leave the extra settings under it unchecked: **Require branches to be up to date before merging** is a stricter option covered in Part 10.
 - Click **Create**.
 
 From now on, nobody pushes straight to `main`. Every change arrives through a pull request.
@@ -410,13 +416,17 @@ Two people, Alice and Bob, work on four features at the same time. You'll play b
 
 Create all four Git folders now, the way a team starts several features at once. **For each row of the table:**
 
-1. In the sidebar, click **Workspace** → your user folder.
-2. Click **Create** → **Git folder**.
+1. In the sidebar, click **Workspace** (not **+ New**, whose menu has no Git folder) → your user folder, under **Users** → your email.
+2. Click **Create**, at the top right of the folder list → **Git folder**. If it isn't offered, check that you're in your own user folder and that Part 4's GitHub token is saved in Linked accounts.
 3. Git repository URL: `https://github.com/<your-username>/databricks-cicd-practice.git`. Git folders use the HTTPS form, not SSH.
 4. Git folder name: for example `alice-avg-order`. Click **Create Git folder**. It starts as a clone of `main`.
 5. Click **Git** next to the folder name to open the Git dialog. Click **Create Branch**, name it for example `feature/avg-order`, base it on `main`, and click **Create**.
 
-You now have four Git folders, each on its own feature branch. Nothing has been pushed yet, so no dev environment exists yet.
+You now have four Git folders, each on its own feature branch.
+
+**Creating the branch already started Deploy to dev.** **Create Branch** creates the branch on GitHub too, and on GitHub creating a branch is a **push**: it sends a new branch name, pointing at a commit GitHub already has. `deploy-dev.yml` runs on every push to `feature/**`, so it runs four times now. Each run deploys an unchanged copy of `main` into that branch's own dev environment, such as `sales_dev_avg_order`; your first **Commit & Push** then redeploys it with your change.
+
+> **Create the branch before you edit.** A Git folder starts on `main`, and `main` is protected: if you edit and **Commit & Push** there by mistake, GitHub rejects the push. **Pull** won't undo it, because Pull merges GitHub's changes into yours and never discards your work. To keep the change, **Create Branch** from the current branch, so the change comes along, and push that. To throw it away, use **⋮** → **Reset** in the Git dialog, which makes the folder match GitHub again.
 
 > In a real team, Alice creates her two folders in her own user folder, and Bob his two in his.
 
@@ -439,6 +449,8 @@ Work in `alice-avg-order`.
 **3. Commit & Push.** Open the Git dialog. `src/build_report.py` is listed and checked. Write the message `Add average order value and order count to report`, and click **Commit & Push**.
 
 **4. Watch CD deploy to dev.** On GitHub → **Actions**, **Deploy to dev** is running for `feature/avg-order`. When it's green, Databricks has the job `[dev <you> avg_order] sales_pipeline_dev`. This is the branch's official dev deployment, done the same way test and prod are deployed. Each Commit & Push to this branch redeploys it.
+
+> **A successful push isn't a successful change.** GitHub accepts the push immediately; the workflow checks it afterwards, over the next few minutes. Rather than watching the Actions tab after every push, turn on notifications for failures: on GitHub, your profile picture → **Settings** → **Notifications** → **System** → **Actions**, choose **Email**, **Web**, and/or **GitHub Mobile**, and check **Only notify for failed workflows**. GitHub notifies whoever pushed, and pushes from a Git folder use your GitHub token, so that's you. You'll also see a ✓, ✗, or ● (running) next to each commit on the branch and on its pull request.
 
 **5. Open a pull request.** On GitHub, a banner shows **feature/avg-order had recent pushes**. Click **Compare & pull request**, check that the base is `main`, and click **Create pull request**. **CI** runs.
 
@@ -564,7 +576,7 @@ Both deploy to their own dev copies (`sales_dev_dq_checks` and `sales_dev_foreca
 
 | Environment | Has now | Updated by |
 |---|---|---|
-| dev | Features 2 and 4, each in its own copy | Each Commit & Push on a feature branch |
+| dev | Features 2 and 4, each in its own copy | Creating a feature branch, and each Commit & Push to it |
 | test | Everything in `main`: Features 1 and 3 | Each merge into `main` |
 | prod | Release v1.0.0: Features 1 and 3 | Each published, approved release |
 
@@ -576,11 +588,11 @@ So far everything has passed. A pipeline is only worth having if it **stops** ba
 
 **1. Make a breaking change.** Create a Git folder `alice-break-it` on a new branch `feature/break-it`, as in Part 5. In `src/transforms.py`, change the `medium` threshold in `segment` from `300` to `500`, as if someone "tidied up" the rule without telling anyone. **Commit & Push** with the message `Change medium threshold`.
 
-**2. Watch CD refuse to deploy.** **Deploy to dev** goes red at the unit-test step: `test_segment_boundaries` expects `segment(300)` to be `"medium"`. The deploy steps after it never run, so not even dev gets the broken code. Open the failed step to read the test output: this is how you'll debug real failures.
+**2. Watch CD refuse to deploy.** **Deploy to dev** goes red at the unit-test step: `test_segment_boundaries` expects `segment(300)` to be `"medium"`. The deploy steps after it never run, so not even dev gets the broken code: it keeps the copy of `main` deployed when the branch was created. Open the failed step to read the test output: this is how you'll debug real failures.
 
 **3. Watch gate 1 hold.** Open a pull request for `feature/break-it`. CI goes red, and the **Merge pull request** button is blocked by `protect-main`. Nothing reaches `main`, test, or prod.
 
-**4. Clean up.** Close the pull request without merging, delete the branch on GitHub, and delete the Git folder. **Clean up dev** still runs; since this branch was never deployed, it has little or nothing to remove.
+**4. Clean up.** Close the pull request without merging, delete the branch on GitHub, and delete the Git folder. **Clean up dev** removes the dev jobs deployed when the branch was created.
 
 > **The lesson:** the tests encoded a business rule (300 is medium), and CI enforced it automatically. If the rule really should change, the fix is to change the **test and the code together**, in one reviewed pull request. Tests only protect what they check: a change the tests don't cover would sail through to test, which is why integration checks and UAT come after.
 
@@ -628,9 +640,11 @@ The process stays the same. What changes is how strongly the environments are se
 
 | Problem | Likely cause |
 |---|---|
+| `lookup <your-workspace-url>: no such host` in Actions | `databricks.yml` still has the placeholder. Replace it in all three targets (and `<your-databricks-email>` in `prod`), then push again. Re-running the old run won't help: it uses the old commit |
 | `401` / "Credential was not sent" in Actions | `DATABRICKS_TOKEN` is missing from that GitHub environment, misspelled, or added as a variable instead of a secret |
 | `403` or "Invalid access token" in Actions | The Databricks token expired or was deleted. Generate a new one and update all three GitHub environments |
 | Commit & Push fails in Databricks ("Resolver error" or similar) | The GitHub token in Linked accounts is missing, expired, or lacks **Contents: Read and write** on this repository |
+| Commit & Push rejected: protected branch, or "changes must be made through a pull request" | You're on `main`. Create a `feature/...` branch from the current branch and push that (see the note at the end of Part 5) |
 | Deploy to dev didn't run after Commit & Push | The branch name doesn't start with `feature/` |
 | Prod deploy doesn't wait for approval | The repository is private on a free GitHub plan, or required reviewers isn't saved on `prod` |
 | Can't merge: "Required status check is expected" | CI hasn't run on this pull request. Push a commit to the branch to trigger it |
@@ -638,6 +652,7 @@ The process stays the same. What changes is how strongly the environments are se
 | `ModuleNotFoundError: transforms`, or a new function isn't found | `transforms.py` must stay in `src/` with the notebooks. After editing it, restart the notebook's session |
 | Prod validate error about `run_as` or `permissions` | Fill in `<your-databricks-email>` in both places in the `prod` target |
 | Pull request waits forever: "Waiting for status to be reported" for `checks` | The required check name in `protect-main` doesn't match the job name in `ci.yml`, or the pull request's base isn't `main` |
+| Deploy to dev or CI is red at **Check Python syntax** | A file in `src/` has a syntax error. The log names the file and line. Fix it, run the notebook once to be sure, and push again |
 | Deploy to dev is red at the unit tests | Working as intended: open the failed step to see which test failed and why. Fix the code (or the test, if the rule really changed) and push again |
 | Deploy to test is red after a merge | A combination of merged changes broke the pipeline. Fix it with a new feature branch and pull request, never by pushing to `main`; don't release until test is green again |
 

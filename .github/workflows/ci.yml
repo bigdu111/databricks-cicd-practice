@@ -19,6 +19,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check Python syntax
+        # Catches syntax errors in the notebooks too, which the unit tests don't run.
+        run: python -m py_compile src/*.py
+
       - name: Unit tests
         run: |
           pip install pytest
