@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # Loads sample raw orders into <catalog>.<schema>.orders.
 
 # COMMAND ----------

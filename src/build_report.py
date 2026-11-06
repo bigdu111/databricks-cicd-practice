@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # Builds <catalog>.<schema>.sales_report: total sales per region.
 
 # COMMAND ----------
@@ -16,7 +20,11 @@ from pyspark.sql import functions as F
 report = (
     spark.table(f"{catalog}.{schema}.orders")
     .groupBy("region")
-    .agg(F.sum("amount").alias("total_amount"))
+    .agg(F.sum("amount").alias("total_amount"),
+         F.round(F.avg("amount"), 2).alias("avg_amount"),
+         F.count("*").alias("total_orders")
+        )
+         
 )
 report.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{catalog}.{schema}.sales_report")
 display(report)
