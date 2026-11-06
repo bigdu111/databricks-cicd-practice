@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # Builds <catalog>.<schema>.sales_report: total sales per region.
 
 # COMMAND ----------
@@ -17,7 +21,7 @@ report = (
     spark.table(f"{catalog}.{schema}.orders")
     .groupBy("region")
     .agg(F.sum("amount").alias("total_amount"),
-         F.round(F.avg("amount", 2), 2).alias("avg_amount"),
+         F.round(F.avg("amount"), 2).alias("avg_amount"),
          F.count("*").alias("total_orders")
         )
          
