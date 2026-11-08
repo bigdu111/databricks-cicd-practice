@@ -12,3 +12,11 @@ def test_clean_amount_handles_currency():
 
 def test_clean_amount_handles_blank():
     assert clean_amount("  ") is None
+
+def test_segment_boundaries():
+    from transforms import segment
+
+    assert segment(1000) == "large"
+    assert segment(300) == "medium"
+    assert segment(299.99) == "small"
+    assert segment(None) == "unknown"
