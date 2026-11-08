@@ -18,4 +18,7 @@ report = spark.table(f"{catalog}.{schema}.sales_report")
 assert orders.count() > 0, "orders table is empty"
 assert report.count() > 0, "sales_report table is empty"
 
+null_amounts = orders.filter("amount IS NULL").count()
+assert null_amounts == 0, f"{null_amounts} orders have no amount"
+
 print(f"Integration checks passed for {catalog}.{schema}")
