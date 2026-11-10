@@ -526,7 +526,9 @@ df = spark.createDataFrame(rows, "order_id string, region string, amount double,
 
 Alice changed `build_report.py`, and Bob changed `ingest.py` and `transforms.py`, so the two features merge without conflicts. Test now has both.
 
-> **What CI didn't check.** Bob's pull request was tested against the `main` he started from, *before* Alice's change. The combination of both features was first run in **test**. That's exactly why test exists: it's the first place every merged change runs together. Teams that want CI to check the combination too turn on **Require branches to be up to date before merging** in the ruleset, so each pull request must first take in the latest `main` and pass CI again.
+> **What CI didn't check.** For a pull request, CI doesn't test the branch on its own: it tests a temporary **merge** of the branch with `main` *as it is when CI runs*. Bob opened his pull request after Alice's merge, so CI did check his code combined with hers. But CI only runs the syntax check, the unit tests, and `bundle validate`: it never runs the pipeline. The two features first **ran together** in **test**. That's exactly why test exists: it's the first place every merged change runs as a whole, on real tables.
+>
+> CI's result can also go stale. If `main` changes *after* CI has run on a pull request, CI doesn't run again by itself, so a green check may not reflect the latest `main`. Teams close that gap with **Require branches to be up to date before merging** in the ruleset: each pull request must take in the latest `main` and pass CI again before it can be merged.
 
 ## Part 8: Features 2 and 4 stay in progress
 
@@ -580,7 +582,13 @@ Both deploy to their own dev copies (`sales_dev_dq_checks` and `sales_dev_foreca
 | test | Everything in `main`: Features 1 and 3 | Each merge into `main` |
 | prod | Release v1.0.0: Features 1 and 3 | Each published, approved release |
 
-**5. Ship Feature 2 later.** Open a pull request for `feature/dq-checks`. `main` has moved on since the branch started, so bring it in first: if the pull request shows **Update branch**, click it. GitHub merges the latest `main` into the feature branch, so CI runs again on the combination, and the push redeploys its dev copy. In `alice-dq-checks`, click **Pull** to bring that update into the Git folder. When CI is green, merge, check test, then publish `v1.1.0` and approve it.
+**5. Ship Feature 2 later.** Open a pull request for `feature/dq-checks`, wait for CI to go green, merge it, check test, then publish `v1.1.0` and approve it.
+
+> **Why the pull request passes, though `main` moved on.**
+> - **CI tests the combination anyway.** As in Part 7, CI runs on a merge of `feature/dq-checks` with the current `main`, so it already includes Features 1 and 3.
+> - **Nothing conflicts.** Feature 2 only changes `src/integration_checks.py`; Features 1 and 3 changed other files, so Git combines them automatically.
+> - **Being out of date isn't blocking.** `protect-main` doesn't require branches to be up to date, so GitHub may offer **Update branch** but doesn't require it. Clicking it is still good practice: it merges the latest `main` into the feature branch, which reruns CI and redeploys the branch's dev copy with the combined code. Afterwards, click **Pull** in `alice-dq-checks` to bring the update into the Git folder.
+> - **A green CI doesn't test the new check.** Feature 2 is an integration check, and CI never runs `integration_checks.py`. The check runs in **Deploy to dev** on the branch's own tables, and in **Deploy to test** after the merge. It passes because the sample data has no blank amounts. To see it fail, add a row with a blank amount, such as `("o6", "East", "")`, to `raw_orders` in `ingest.py` on a branch: `clean_amount("")` returns `None`, and Deploy to dev goes red at **Run integration tests**.
 
 ## Practice: watch the gates stop a bad change
 
@@ -681,3 +689,51 @@ With the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html
 databricks bundle deploy -t dev --var="branch=avg_order"
 databricks bundle run -t dev --var="branch=avg_order" sales_pipeline
 ```
+
+## Optional: a quick docs fix from your computer
+
+For a change that doesn't touch the pipeline, such as an update to this README, you don't need a Git folder or a dev deploy. Make it from the project folder on your computer, through a short-lived branch and a pull request, since `main` is protected.
+
+**1. Start from the latest `main`:**
+
+```bash
+git switch main
+git pull
+```
+
+**2. Create a `docs/` branch:**
+
+```bash
+git switch -c docs/readme-update
+```
+
+Name it `docs/...`, not `feature/...`. **Deploy to dev** and **Clean up dev** only react to `feature/**` branches, so a docs branch deploys no dev copy and leaves nothing to clean up. CI still runs on its pull request, because CI runs on every pull request into `main`, so gate 1 still applies.
+
+**3. Make the change.** Edit `README.md` directly, or copy over a new version, for example:
+
+```bash
+cp ~/Downloads/README.md README.md
+```
+
+If that path doesn't exist, type `cp `, drag the file from Finder onto the terminal, then type ` README.md`.
+
+**4. Check, commit, and push:**
+
+```bash
+git status          # only README.md should be listed
+git add README.md
+git commit -m "Update README"
+git push -u origin docs/readme-update
+```
+
+**5. On GitHub:** click **Compare & pull request** → **Create pull request**. When CI is green, click **Merge pull request** → **Confirm merge** → **Delete branch**.
+
+**6. Back on your computer:**
+
+```bash
+git switch main
+git pull
+git branch -d docs/readme-update
+```
+
+The merge into `main` also starts **Deploy to test**, which redeploys test with the same code. That's harmless, and nothing changes in prod: a docs change only reaches prod as part of the next release.
