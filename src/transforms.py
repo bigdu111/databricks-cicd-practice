@@ -13,6 +13,6 @@ def segment(amount):
         return "unknown"
     if amount >= 1000:
         return "large"
-    if amount >= 300:
+    if amount >= 500:
         return "medium"
     return "small"
